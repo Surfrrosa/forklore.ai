@@ -5,107 +5,62 @@
  * into the Mention format that the scoring algorithm expects.
  */
 
-import { RedditPost, RedditComment } from '@/types';
-import { Mention } from './score';
-import { extractCandidates } from './extractor';
-import { Gazetteer, resolveDeterministic } from './resolver';
+import type { ExtractCandidate } from "./extractor";
+import type { Canonical } from "./resolver";
+import type { Mention } from "./score";
 
-export type BucketedRestaurant = {
-  restaurantId: string;
-  restaurantName: string;
-  mentions: Mention[];
+/** A single Reddit text source we consider a "mention site" */
+export type Source = {
+  threadId: string;
+  postUpvotes: number;
+  commentUpvotes: number;
+  createdUtc: number; // seconds
+  text: string;
 };
 
-/**
- * Process Reddit posts and comments to extract restaurant mentions
- * and bucket them by restaurant ID
- */
+/** Build ageDays from UTC seconds */
+function ageDaysFromUtc(createdUtc: number): number {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const diffSec = Math.max(0, nowSec - createdUtc);
+  return diffSec / 86400;
+}
+
+/** Create a context snippet length in chars */
+function contextChars(text: string, span: { start: number; end: number }) {
+  const left = Math.max(0, span.start - 120);
+  const right = Math.min(text.length, span.end + 120);
+  const snippet = text.slice(left, right);
+  return snippet.length;
+}
+
+/** Bucket mentions by canonical id, return map of id -> Mention[] */
 export function bucketMentions(
-  posts: RedditPost[],
-  comments: RedditComment[],
-  gazetteer: Gazetteer
-): Map<string, BucketedRestaurant> {
-  const buckets = new Map<string, BucketedRestaurant>();
-  const now = Date.now() / 1000; // current time in seconds
+  sources: Source[],
+  resolve: (norm: string) => Canonical | null,
+  extract: (text: string) => ExtractCandidate[]
+): Map<string, Mention[]> {
+  const buckets = new Map<string, Mention[]>();
 
-  // Process posts
-  for (const post of posts) {
-    const text = `${post.title} ${post.selftext}`.trim();
-    if (!text) continue;
+  for (const s of sources) {
+    const candidates = extract(s.text);
 
-    const candidates = extractCandidates(text);
-    const ageDays = (now - post.created_utc) / 86400;
+    for (const c of candidates) {
+      const canon = resolve(c.norm);
+      if (!canon || !canon.id) continue;
 
-    for (const candidate of candidates) {
-      const resolved = resolveDeterministic(candidate.norm, gazetteer);
-      if (!resolved) continue; // Skip unresolved candidates
-
-      const mention: Mention = {
-        commentUpvotes: 0, // Posts don't have comment upvotes
-        postUpvotes: post.score,
-        ageDays,
-        contextChars: text.length,
-        threadId: post.id,
+      const m: Mention = {
+        commentUpvotes: s.commentUpvotes,
+        postUpvotes: s.postUpvotes,
+        ageDays: ageDaysFromUtc(s.createdUtc),
+        contextChars: contextChars(s.text, { start: c.start, end: c.end }),
+        threadId: s.threadId,
       };
 
-      if (!buckets.has(resolved.id)) {
-        buckets.set(resolved.id, {
-          restaurantId: resolved.id,
-          restaurantName: resolved.name,
-          mentions: [],
-        });
-      }
-
-      buckets.get(resolved.id)!.mentions.push(mention);
-    }
-  }
-
-  // Process comments
-  for (const comment of comments) {
-    const text = comment.body.trim();
-    if (!text) continue;
-
-    const candidates = extractCandidates(text);
-    const ageDays = (now - comment.created_utc) / 86400;
-
-    for (const candidate of candidates) {
-      const resolved = resolveDeterministic(candidate.norm, gazetteer);
-      if (!resolved) continue;
-
-      // Find the parent post to get post upvotes
-      const parentPost = posts.find(p => p.id === comment.post_id);
-
-      const mention: Mention = {
-        commentUpvotes: comment.score,
-        postUpvotes: parentPost?.score ?? 0,
-        ageDays,
-        contextChars: text.length,
-        threadId: comment.post_id,
-      };
-
-      if (!buckets.has(resolved.id)) {
-        buckets.set(resolved.id, {
-          restaurantId: resolved.id,
-          restaurantName: resolved.name,
-          mentions: [],
-        });
-      }
-
-      buckets.get(resolved.id)!.mentions.push(mention);
+      const arr = buckets.get(canon.id) ?? [];
+      arr.push(m);
+      buckets.set(canon.id, arr);
     }
   }
 
   return buckets;
-}
-
-/**
- * Convert bucketed mentions to format expected by rankRestaurants()
- */
-export function prepareScoringInput(
-  buckets: Map<string, BucketedRestaurant>
-): { name: string; mentions: Mention[] }[] {
-  return Array.from(buckets.values()).map(bucket => ({
-    name: bucket.restaurantName,
-    mentions: bucket.mentions,
-  }));
 }
