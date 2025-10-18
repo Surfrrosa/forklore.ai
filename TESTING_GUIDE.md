@@ -324,76 +324,76 @@ Create `test-week1.sh`:
 ```bash
 #!/bin/bash
 
-echo "🧪 Testing Week 1 Improvements..."
+echo " Testing Week 1 Improvements..."
 echo ""
 
 BASE_URL="http://localhost:3001"
 
 # Test 1: Fuzzy search
-echo "1️⃣  Testing fuzzy search threshold..."
+echo "1⃣  Testing fuzzy search threshold..."
 FUZZY=$(curl -s "$BASE_URL/api/v2/fuzzy?q=pizza&limit=3")
 MATCH_SCORE=$(echo $FUZZY | jq '.results[0].matchScore')
 if (( $(echo "$MATCH_SCORE > 0.5" | bc -l) )); then
-  echo "✅ Fuzzy threshold working (score: $MATCH_SCORE)"
+  echo " Fuzzy threshold working (score: $MATCH_SCORE)"
 else
-  echo "❌ Fuzzy threshold too low (score: $MATCH_SCORE)"
+  echo " Fuzzy threshold too low (score: $MATCH_SCORE)"
 fi
 echo ""
 
 # Test 2: Pagination
-echo "2️⃣  Testing pagination..."
+echo "2⃣  Testing pagination..."
 PAGE1=$(curl -s "$BASE_URL/api/v2/search?city=nyc&type=iconic&limit=5&offset=0")
 HAS_PAGINATION=$(echo $PAGE1 | jq 'has("pagination")')
 if [ "$HAS_PAGINATION" = "true" ]; then
-  echo "✅ Pagination metadata present"
+  echo " Pagination metadata present"
 else
-  echo "❌ Pagination metadata missing"
+  echo " Pagination metadata missing"
 fi
 echo ""
 
 # Test 3: Cache headers
-echo "3️⃣  Testing cache headers..."
+echo "3⃣  Testing cache headers..."
 CACHE_HEADER=$(curl -s -I "$BASE_URL/api/v2/search?city=nyc&type=iconic&limit=1" | grep -i "cache-control")
 if [ -n "$CACHE_HEADER" ]; then
-  echo "✅ Cache headers present: $CACHE_HEADER"
+  echo " Cache headers present: $CACHE_HEADER"
 else
-  echo "❌ Cache headers missing"
+  echo " Cache headers missing"
 fi
 echo ""
 
 # Test 4: Rate limit headers
-echo "4️⃣  Testing rate limit headers..."
+echo "4⃣  Testing rate limit headers..."
 RATE_HEADER=$(curl -s -I "$BASE_URL/api/v2/search?city=nyc&type=iconic&limit=1" | grep -i "x-ratelimit-limit")
 if [ -n "$RATE_HEADER" ]; then
-  echo "✅ Rate limit headers present: $RATE_HEADER"
+  echo " Rate limit headers present: $RATE_HEADER"
 else
-  echo "⚠️  Rate limit headers missing (Upstash not configured?)"
+  echo "  Rate limit headers missing (Upstash not configured?)"
 fi
 echo ""
 
 # Test 5: Multiple cuisines
-echo "5️⃣  Testing multiple cuisine filtering..."
+echo "5⃣  Testing multiple cuisine filtering..."
 MULTI=$(curl -s "$BASE_URL/api/v2/search?city=nyc&type=cuisine&cuisine=pizza_restaurant&cuisine=italian_restaurant&limit=5")
 CUISINES=$(echo $MULTI | jq '.cuisines')
 if [ "$CUISINES" != "null" ]; then
-  echo "✅ Multiple cuisines working: $CUISINES"
+  echo " Multiple cuisines working: $CUISINES"
 else
-  echo "❌ Multiple cuisines not working"
+  echo " Multiple cuisines not working"
 fi
 echo ""
 
 # Test 6: Cuisines endpoint
-echo "6️⃣  Testing cuisines endpoint..."
+echo "6⃣  Testing cuisines endpoint..."
 CUISINES_EP=$(curl -s "$BASE_URL/api/v2/cuisines?city=nyc&limit=5")
 CUISINE_COUNT=$(echo $CUISINES_EP | jq '.count')
 if [ "$CUISINE_COUNT" -gt 0 ]; then
-  echo "✅ Cuisines endpoint working ($CUISINE_COUNT cuisines)"
+  echo " Cuisines endpoint working ($CUISINE_COUNT cuisines)"
 else
-  echo "❌ Cuisines endpoint not working"
+  echo " Cuisines endpoint not working"
 fi
 echo ""
 
-echo "✨ Tests complete!"
+echo " Tests complete!"
 ```
 
 Run it:
@@ -431,31 +431,31 @@ chmod +x test-week1.sh
 
 ## Success Criteria
 
-✅ All endpoints return 200 OK
-✅ Fuzzy match scores > 0.5
-✅ Pagination metadata present
-✅ Cache headers present
-✅ Rate limit headers present (if Upstash configured)
-✅ Multiple cuisines work
-✅ Cuisines endpoint returns data
-✅ API latency < 100ms
+ All endpoints return 200 OK
+ Fuzzy match scores > 0.5
+ Pagination metadata present
+ Cache headers present
+ Rate limit headers present (if Upstash configured)
+ Multiple cuisines work
+ Cuisines endpoint returns data
+ API latency < 100ms
 
 ---
 
 ## Next Steps After Testing
 
 If all tests pass:
-1. ✅ Mark Week 1 complete
-2. 🚀 Deploy to Vercel (optional)
-3. 📊 Set up monitoring (Sentry, Upstash dashboard)
-4. 📝 Start Week 2 items (if desired)
+1.  Mark Week 1 complete
+2.  Deploy to Vercel (optional)
+3.  Set up monitoring (Sentry, Upstash dashboard)
+4.  Start Week 2 items (if desired)
 
 If tests fail:
-1. 🔍 Check console logs (`npm run dev` output)
-2. 🔍 Check database connection
-3. 🔍 Verify migrations ran successfully
-4. 🔍 Ask for help debugging specific failures
+1.  Check console logs (`npm run dev` output)
+2.  Check database connection
+3.  Verify migrations ran successfully
+4.  Ask for help debugging specific failures
 
 ---
 
-**Happy Testing!** 🧪
+**Happy Testing!** 

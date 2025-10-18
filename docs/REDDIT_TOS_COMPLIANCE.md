@@ -24,8 +24,8 @@ From [Reddit Data API Terms](https://www.reddit.com/wiki/api-terms):
 
 ### What This Means for Us
 
-❌ **Prohibited**: Storing raw comment/post text and displaying it without attribution
-✅ **Allowed**: Storing metadata (votes, timestamps) + permalink to original
+ **Prohibited**: Storing raw comment/post text and displaying it without attribution
+ **Allowed**: Storing metadata (votes, timestamps) + permalink to original
 
 ---
 
@@ -42,7 +42,7 @@ CREATE TABLE "RedditMention" (
   commentId TEXT,
   score     INTEGER NOT NULL,
   timestamp TIMESTAMP NOT NULL,
-  snippet   TEXT NOT NULL  -- ❌ RAW CONTENT STORAGE (VIOLATES ToS)
+  snippet   TEXT NOT NULL  --  RAW CONTENT STORAGE (VIOLATES ToS)
 );
 ```
 
@@ -61,12 +61,12 @@ CREATE TABLE "RedditMention" (
   commentId   TEXT,
   score       INTEGER NOT NULL,
   timestamp   TIMESTAMP NOT NULL,
-  permalink   TEXT NOT NULL,      -- ✅ Link back to Reddit
-  contentHash TEXT NOT NULL,      -- ✅ Hash for dedup (not raw text)
-  charCount   INTEGER NOT NULL,   -- ✅ Derived metric
-  sentiment   TEXT,               -- ✅ Derived metric (optional)
+  permalink   TEXT NOT NULL,      --  Link back to Reddit
+  contentHash TEXT NOT NULL,      --  Hash for dedup (not raw text)
+  charCount   INTEGER NOT NULL,   --  Derived metric
+  sentiment   TEXT,               --  Derived metric (optional)
 
-  UNIQUE (postId, commentId)      -- ✅ Idempotent ingestion
+  UNIQUE (postId, commentId)      --  Idempotent ingestion
 );
 ```
 
@@ -140,14 +140,14 @@ When showing "top mentions" in API responses:
 ```
 
 **What we show**:
-- ✅ Engagement metrics (score, timestamp)
-- ✅ Permalink to original (attribution)
-- ✅ Derived metrics (charCount, sentiment)
+-  Engagement metrics (score, timestamp)
+-  Permalink to original (attribution)
+-  Derived metrics (charCount, sentiment)
 
 **What we DON'T show**:
-- ❌ Raw text from Reddit
-- ❌ Excerpts without attribution
-- ❌ Republished content
+-  Raw text from Reddit
+-  Excerpts without attribution
+-  Republished content
 
 **User flow**: Click permalink → Opens Reddit → Sees original content with full context
 
@@ -188,7 +188,7 @@ ALTER TABLE "RedditMention"
 ```typescript
 // Before (non-compliant):
 await prisma.redditMention.create({
-  data: { ...mention, snippet: fullText }  // ❌
+  data: { ...mention, snippet: fullText }  // 
 });
 
 // After (compliant):
@@ -196,7 +196,7 @@ await prisma.redditMention.create({
   data: {
     ...mention,
     permalink: buildPermalink(mention),
-    contentHash: md5(fullText),            // ✅
+    contentHash: md5(fullText),            // 
     charCount: fullText.length,
   }
 });
@@ -206,10 +206,10 @@ await prisma.redditMention.create({
 
 ```sql
 -- Before (references snippet):
-SELECT snippet FROM "RedditMention" WHERE ...  -- ❌
+SELECT snippet FROM "RedditMention" WHERE ...  -- 
 
 -- After (references permalink):
-SELECT permalink, charCount FROM "RedditMention" WHERE ...  -- ✅
+SELECT permalink, charCount FROM "RedditMention" WHERE ...  -- 
 ```
 
 ---
@@ -227,12 +227,12 @@ Our use qualifies as **transformative fair use**:
 
 ### Reddit API ToS Compliance
 
-✅ **Permitted Uses**:
+ **Permitted Uses**:
 - Accessing data via official API
 - Deriving aggregate metrics
 - Linking back to Reddit with attribution
 
-❌ **Prohibited Uses** (we avoid):
+ **Prohibited Uses** (we avoid):
 - Storing raw content without attribution
 - Republishing content elsewhere
 - Circumventing API rate limits
@@ -241,7 +241,7 @@ Our use qualifies as **transformative fair use**:
 
 ## Example: Compliant vs Non-Compliant
 
-### ❌ Non-Compliant Display
+###  Non-Compliant Display
 
 ```json
 {
@@ -257,7 +257,7 @@ Our use qualifies as **transformative fair use**:
 
 ---
 
-### ✅ Compliant Display
+###  Compliant Display
 
 ```json
 {
@@ -342,4 +342,4 @@ A: Using public API for aggregate metrics + attribution is within ToS. For comme
 
 **Last Updated**: 2025-10-18
 **Version**: 1.0 (ToS-Compliant Schema)
-**Status**: ✅ Fully Compliant
+**Status**:  Fully Compliant

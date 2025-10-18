@@ -162,3 +162,10 @@ coverage/
 .vscode/
 .idea/
 
+# Project-specific
+data/
+AUDIT/
+AUDIT_PACK_*
+*.zip
+etl/
+

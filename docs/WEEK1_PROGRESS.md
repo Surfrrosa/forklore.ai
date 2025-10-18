@@ -1,8 +1,8 @@
 # Week 1 Critical Path Implementation - Progress Report
 
-## ✅ Completed (4/7 items)
+##  Completed (4/7 items)
 
-### 1. Fuzzy Matching Threshold (0.42 → 0.55) ✅
+### 1. Fuzzy Matching Threshold (0.42 → 0.55) 
 **Files Created:**
 - `prisma/migrations/007_improve_matching_threshold.sql`
 
@@ -17,7 +17,7 @@
 
 ---
 
-### 2. BRIN Index on RedditMention.timestamp ✅
+### 2. BRIN Index on RedditMention.timestamp 
 **Files Created:**
 - `prisma/migrations/008_brin_timestamp_index.sql`
 
@@ -38,7 +38,7 @@ CREATE INDEX idx_reddit_mention_place_time
 
 ---
 
-### 3. Cache Headers + ETag Support ✅
+### 3. Cache Headers + ETag Support 
 **Files Created:**
 - `lib/cache.ts` (reusable caching utilities)
 
@@ -60,7 +60,7 @@ CREATE INDEX idx_reddit_mention_place_time
 
 ---
 
-### 4. Cursor-Based Pagination ✅
+### 4. Cursor-Based Pagination 
 **Files Modified:**
 - `app/api/v2/search/route.ts`
 
@@ -118,7 +118,7 @@ _(None currently - ready for next batch)_
 
 ---
 
-## 📊 Statistics
+##  Statistics
 
 - **Migrations Created**: 2 (007, 008)
 - **API Endpoints Enhanced**: 3 (search, cuisines, fuzzy)
@@ -132,7 +132,7 @@ _(None currently - ready for next batch)_
 
 ---
 
-## 🚀 Next Steps
+##  Next Steps
 
 Choose one:
 1. **Continue Week 1**: Tackle scoring improvements (Wilson + decay)
