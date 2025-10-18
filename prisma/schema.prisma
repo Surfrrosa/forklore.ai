@@ -1,0 +1,106 @@
+// Forklore.ai Phase 2 Schema
+// Neon Postgres with PostGIS + pg_trgm
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pg_trgm]
+}
+
+// City boundaries for geo-filtering
+model City {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  country   String
+  bbox      Unsupported("geometry(Polygon,4326)")?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  places Place[]
+
+  @@index([name])
+}
+
+// Core restaurant/venue data from Overture Maps
+model Place {
+  id           String   @id @default(cuid())
+  overtureId   String   @unique
+  name         String
+  nameNorm     String // Normalized for fuzzy matching (lowercase, no punctuation)
+  cityId       String
+  geog         Unsupported("geography(Point,4326)") // Using geography for distance ops
+  aliases      Json     @default("[]") // JSONB array of name variations
+  cuisine      String[] // Array of cuisine types
+  status       String   @default("active") // active, closed, unverified
+  address      String?
+  updatedAt    DateTime @updatedAt
+
+  city     City              @relation(fields: [cityId], references: [id])
+  mentions RedditMention[]
+  agg      PlaceAggregation?
+
+  @@index([cityId, name])
+  @@index([aliases(ops: JsonbPathOps)], type: Gin)
+  @@index([cuisine], type: Gin)
+  @@index([geog], type: Gist)
+  // pg_trgm fuzzy index added in migration SQL
+}
+
+// Individual Reddit mentions (comments/posts)
+// ToS-compliant: stores metadata + permalink, not raw text
+model RedditMention {
+  id          String   @id @default(cuid())
+  placeId     String?  // Nullable - not all mentions will match a place
+  subreddit   String
+  postId      String   // Reddit post ID (t3_xxx)
+  commentId   String?  // Reddit comment ID (t1_xxx), null if mention in post
+  score       Int      // Upvotes on the comment/post
+  timestamp   DateTime // When the mention occurred
+  permalink   String   // Reddit permalink (for attribution)
+  contentHash String   // SHA-256 hash of original content (for dedup)
+  charCount   Int      // Character count of original mention
+  sentiment   String?  // Optional: positive, neutral, negative
+  createdAt   DateTime @default(now())
+
+  place Place? @relation(fields: [placeId], references: [id])
+
+  @@unique([postId, commentId]) // Prevent duplicate mentions
+  @@index([placeId, timestamp])
+  @@index([subreddit])
+  @@index([postId])
+}
+
+// Pre-computed aggregations for fast queries
+model PlaceAggregation {
+  placeId        String   @id
+  iconicScore    Decimal  @db.Decimal(10, 2) // Long-term score (all-time)
+  trendingScore  Decimal  @db.Decimal(10, 2) // Recent score (90d)
+  mentions90d    Int      @default(0) // Mentions in last 90 days
+  uniqueThreads  Int      @default(0) // Total unique discussion threads
+  totalMentions  Int      @default(0) // Total mentions all-time
+  totalUpvotes   Int      @default(0) // Sum of all upvotes
+  lastSeen       DateTime // Most recent mention
+  topSnippets    Json     @default("[]") // Top 3 snippets with permalinks
+  computedAt     DateTime @updatedAt
+
+  place Place @relation(fields: [placeId], references: [id])
+
+  @@index([placeId, iconicScore(sort: Desc)])
+  @@index([placeId, trendingScore(sort: Desc)])
+}
+
+// Subreddit metadata for filtering
+model Subreddit {
+  name        String   @id // e.g., "FoodNYC"
+  cityIds     String[] // Cities this subreddit covers
+  lastSync    DateTime // Last Pushshift sync timestamp
+  totalPosts  Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  @@index([cityIds], type: Gin)
+}

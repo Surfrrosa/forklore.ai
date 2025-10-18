@@ -3,14 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
+  --bg: #0A0A0B;
+  --panel: #0F0F12;
+  --fg: #EDEDED;
+  --muted: #A1A1AA;
+  --line: #202026;
+  --brand1: #FF7A45;
+  --brand2: #FF4500;
+  --action: #FF4500;
+  --ok: #22C55E;
+  --warn: #F59E0B;
+  --err: #EF4444;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  color: var(--fg);
+  background: var(--bg);
 }

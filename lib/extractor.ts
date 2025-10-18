@@ -47,8 +47,11 @@ export function normalizeName(s: string): string {
 /**
  * Heuristic: capitalized phrase extractor.
  * Matches sequences like "Di Fara Pizza", "Joe's Shanghai", "Lucali", "Prince Street Pizza"
+ *
+ * @param text - The text to extract candidates from
+ * @param targetCity - Optional city name to filter context (e.g., "logan" from "logan, wv")
  */
-export function extractCandidates(text: string): ExtractCandidate[] {
+export function extractCandidates(text: string, targetCity?: string): ExtractCandidate[] {
   const candidates: ExtractCandidate[] = [];
 
   // Quick cleanup to reduce noise
@@ -79,6 +82,41 @@ export function extractCandidates(text: string): ExtractCandidate[] {
 
     const lastWord = norm.split(" ").slice(-1)[0];
     const hasFoodWord = FOOD_SUFFIXES.includes(lastWord);
+
+    // Location context filtering: if targetCity provided, check if the surrounding context
+    // mentions the target city. This prevents extracting "Joe's Pizza" from a thread like
+    // "I'm from Logan, WV but moved to NYC. Best pizza is Joe's Pizza" when searching for Logan.
+    if (targetCity) {
+      // Get context window around the mention (300 chars before and after)
+      const contextStart = Math.max(0, m.index - 300);
+      const contextEnd = Math.min(safe.length, m.index + raw.length + 300);
+      const context = safe.slice(contextStart, contextEnd).toLowerCase();
+
+      const targetLower = targetCity.toLowerCase();
+
+      // Check for location transition phrases that indicate the mention is about a DIFFERENT place
+      const locationTransitions = [
+        `from ${targetLower}`,
+        `grew up in ${targetLower}`,
+        `used to live in ${targetLower}`,
+        `moved from ${targetLower}`,
+        `visiting ${targetLower}`,
+        `lived in ${targetLower}`,
+        `born in ${targetLower}`,
+      ];
+
+      // If we find a transition phrase, skip this candidate (it's about a different location)
+      const hasTransition = locationTransitions.some(phrase => context.includes(phrase));
+
+      if (hasTransition) {
+        // Check if the mention itself is near the target city name
+        // If target city appears within 50 chars AFTER the transition, it might be valid
+        const mentionContext = safe.slice(m.index - 50, m.index + raw.length + 50).toLowerCase();
+        if (!mentionContext.includes(targetLower)) {
+          continue; // Skip this candidate - it's about a different location
+        }
+      }
+    }
 
     candidates.push({
       raw,

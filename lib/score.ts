@@ -30,14 +30,14 @@ export type ScoreParams = {
   last30dWindow: number;      // 30
 };
 
-/** Reasonable defaults for MVP */
+/** Reasonable defaults for MVP (tuned for better recall) */
 export const DEFAULT_PARAMS: ScoreParams = {
   halfLifeDays: 45,
   maxContextBoost: 1.5,
   baseContextBoost: 0.8,
   contextPerChar: 0.001,
   minThreads: 2,
-  orMinTotalUpvotes: 100,
+  orMinTotalUpvotes: 10,  // Lowered to account for only counting direct mention upvotes
   last30dWindow: 30,
 };
 
@@ -52,10 +52,15 @@ export function contextQuality(chars: number, base: number, perChar: number, cap
 }
 
 export function mentionScore(m: Mention, p: ScoreParams): number {
-  const upvoteWeight = Math.log1p(m.commentUpvotes) + 0.5 * Math.log1p(m.postUpvotes);
+  // More intuitive scoring: upvotes matter linearly (with mild dampening)
+  // Use sqrt instead of log to preserve more upvote impact
+  const upvoteWeight = Math.sqrt(m.commentUpvotes + 1) + 0.3 * Math.sqrt(m.postUpvotes + 1);
   const decay = recencyDecay(m.ageDays, p.halfLifeDays);
-  const cq = contextQuality(m.contextChars, p.baseContextBoost, p.contextPerChar, p.maxContextBoost);
-  return (1 + upvoteWeight) * decay * cq;
+
+  // Reduce context boost influence - it was artificially inflating verbose comments
+  const cq = 1.0 + Math.min(0.3, m.contextChars / 10000); // Max 30% boost for very long comments
+
+  return upvoteWeight * decay * cq;
 }
 
 /**
@@ -78,6 +83,9 @@ export function scoreRestaurant(
   if (!passesEvidence) return null;
 
   const score = mentions.reduce((acc, m) => acc + mentionScore(m, p), 0);
+
+  // Filter out broken aggregates with invalid scores
+  if (!Number.isFinite(score)) return null;
 
   return {
     name,

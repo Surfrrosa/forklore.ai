@@ -33,20 +33,31 @@ function contextChars(text: string, span: { start: number; end: number }) {
   return snippet.length;
 }
 
-/** Bucket mentions by canonical id, return map of id -> Mention[] */
+export type BucketResult = {
+  buckets: Map<string, Mention[]>;
+  totalCandidates: number;
+  resolvedCandidates: number;
+};
+
+/** Bucket mentions by canonical id, return map + instrumentation */
 export function bucketMentions(
   sources: Source[],
   resolve: (norm: string) => Canonical | null,
   extract: (text: string) => ExtractCandidate[]
-): Map<string, Mention[]> {
+): BucketResult {
   const buckets = new Map<string, Mention[]>();
+  let totalCandidates = 0;
+  let resolvedCandidates = 0;
 
   for (const s of sources) {
     const candidates = extract(s.text);
+    totalCandidates += candidates.length;
 
     for (const c of candidates) {
       const canon = resolve(c.norm);
       if (!canon || !canon.id) continue;
+
+      resolvedCandidates++;
 
       const m: Mention = {
         commentUpvotes: s.commentUpvotes,
@@ -62,5 +73,5 @@ export function bucketMentions(
     }
   }
 
-  return buckets;
+  return { buckets, totalCandidates, resolvedCandidates };
 }
