@@ -1,0 +1,185 @@
+{
+  "cities": [
+    {
+      "id": "nyc",
+      "name": "New York City",
+      "country": "USA",
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "bbox": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-74.25909, 40.49612],
+          [-73.70018, 40.49612],
+          [-73.70018, 40.91553],
+          [-74.25909, 40.91553],
+          [-74.25909, 40.49612]
+        ]]
+      },
+      "aliases": [
+        "nyc",
+        "new york",
+        "manhattan",
+        "brooklyn",
+        "queens",
+        "bronx",
+        "staten island"
+      ],
+      "boroughs": [
+        {
+          "name": "Manhattan",
+          "aliases": ["manhattan", "mhtn"]
+        },
+        {
+          "name": "Brooklyn",
+          "aliases": ["brooklyn", "bk", "bklyn"]
+        },
+        {
+          "name": "Queens",
+          "aliases": ["queens", "qns"]
+        },
+        {
+          "name": "Bronx",
+          "aliases": ["bronx", "the bronx"]
+        },
+        {
+          "name": "Staten Island",
+          "aliases": ["staten island", "si"]
+        }
+      ],
+      "subreddits": [
+        "nyc",
+        "newyorkcity",
+        "AskNYC",
+        "manhattan",
+        "brooklyn",
+        "queens",
+        "bronx",
+        "statenisland",
+        "FoodNYC"
+      ],
+      "ranked": true,
+      "preloaded": true
+    },
+    {
+      "id": "sf",
+      "name": "San Francisco",
+      "country": "USA",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "bbox": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-122.5155, 37.7034],
+          [-122.3549, 37.7034],
+          [-122.3549, 37.8324],
+          [-122.5155, 37.8324],
+          [-122.5155, 37.7034]
+        ]]
+      },
+      "aliases": [
+        "sf",
+        "san francisco",
+        "san fran",
+        "frisco"
+      ],
+      "subreddits": [
+        "sanfrancisco",
+        "AskSF",
+        "bayarea",
+        "SFFood"
+      ],
+      "ranked": false,
+      "preloaded": false
+    },
+    {
+      "id": "chicago",
+      "name": "Chicago",
+      "country": "USA",
+      "lat": 41.8781,
+      "lon": -87.6298,
+      "bbox": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-87.9401, 41.6445],
+          [-87.5240, 41.6445],
+          [-87.5240, 42.0230],
+          [-87.9401, 42.0230],
+          [-87.9401, 41.6445]
+        ]]
+      },
+      "aliases": [
+        "chicago",
+        "chi",
+        "chitown",
+        "the windy city"
+      ],
+      "subreddits": [
+        "chicago",
+        "ChicagoFood",
+        "AskChicago"
+      ],
+      "ranked": false,
+      "preloaded": false
+    },
+    {
+      "id": "austin",
+      "name": "Austin",
+      "country": "USA",
+      "lat": 30.2672,
+      "lon": -97.7431,
+      "bbox": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-97.9383, 30.1178],
+          [-97.5707, 30.1178],
+          [-97.5707, 30.5167],
+          [-97.9383, 30.5167],
+          [-97.9383, 30.1178]
+        ]]
+      },
+      "aliases": [
+        "austin",
+        "atx",
+        "austin tx"
+      ],
+      "subreddits": [
+        "Austin",
+        "austinfood"
+      ],
+      "ranked": false,
+      "preloaded": false
+    }
+  ],
+  "brand_rules": [
+    {
+      "brand": "Shake Shack",
+      "aliases": ["shake shack", "shakeshack"],
+      "is_chain": true
+    },
+    {
+      "brand": "Joe's Pizza",
+      "aliases": ["joes pizza", "joe's", "joes"],
+      "is_chain": true,
+      "notes": "Multiple NYC locations, not affiliated with other 'Joe's'"
+    },
+    {
+      "brand": "Katz's Delicatessen",
+      "aliases": ["katz's", "katz", "katzs deli", "katz's deli"],
+      "is_chain": false,
+      "canonical_address": "205 E Houston St, New York, NY"
+    },
+    {
+      "brand": "Peter Luger",
+      "aliases": ["peter luger", "lugers"],
+      "is_chain": false,
+      "canonical_address": "178 Broadway, Brooklyn, NY"
+    },
+    {
+      "brand": "Di Fara Pizza",
+      "aliases": ["di fara", "difara"],
+      "is_chain": false,
+      "canonical_address": "1424 Avenue J, Brooklyn, NY"
+    }
+  ]
+}
