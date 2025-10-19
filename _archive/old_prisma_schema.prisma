@@ -21,9 +21,24 @@ model City {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  places Place[]
+  places  Place[]
+  aliases CityAlias[]
 
   @@index([name])
+}
+
+// City and borough aliases for location normalization
+model CityAlias {
+  id         String   @id @default(cuid())
+  cityId     String
+  alias      String
+  isBorough  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId])
 }
 
 // Core restaurant/venue data from Overture Maps

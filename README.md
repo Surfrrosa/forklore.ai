@@ -1,162 +1,147 @@
 # Forklore.ai
 
-Community-driven restaurant discovery platform powered by Reddit sentiment analysis and geospatial data.
+Production-grade restaurant discovery platform powered by Reddit community insights and global geospatial data.
+
+## Status
+
+**Currently**: Clean slate production rebuild (Phase 1)
+**Goal**: Search ANY city globally and get Reddit-ranked restaurant recommendations
+
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for implementation roadmap and [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) for architecture decisions.
 
 ## Overview
 
-Forklore.ai aggregates and analyzes restaurant mentions across Reddit to surface authentic dining recommendations. The platform combines natural language processing, sentiment analysis, and statistical ranking to identify iconic and trending restaurants in major cities.
+Forklore.ai enables users to discover restaurants in any city worldwide by aggregating and analyzing Reddit mentions. The platform combines:
 
-### Key Features
-
-- **Fuzzy Search**: pg_trgm-powered autocomplete with 0.55 similarity threshold
-- **Dual Ranking System**: Wilson Score smoothing for iconic places, exponential decay for trending
-- **Production-Grade API**: Rate limiting, HTTP caching, ETag support, pagination
-- **Reddit ToS Compliant**: Permalink-based attribution, no raw content storage
-- **Geospatial Integration**: PostGIS-enabled location queries and nearby search
-- **Real-time Aggregation**: Materialized views with sub-100ms query performance
-
-## Tech Stack
-
-### Core
-
-- **Runtime**: Node.js 20+, TypeScript 5.6
-- **Framework**: Next.js 14 (App Router)
-- **Database**: PostgreSQL 16 (Neon) with PostGIS + pg_trgm extensions
-- **Caching**: Upstash Redis (rate limiting)
-- **Deployment**: Vercel (planned)
-
-### Data Processing
-
-- **ETL**: DuckDB for CSV/Parquet processing
-- **NER**: Custom named entity recognition for restaurant extraction
-- **Scoring**: Bayesian Wilson Score, exponential time decay
-- **Ingestion**: Reddit OAuth API with idempotent deduplication
+- **Global Coverage**: On-demand city bootstrap via Overpass API (OpenStreetMap)
+- **Rich Rankings**: Pre-loaded cities get full Reddit sentiment analysis
+- **Instant Results**: Unranked results immediately, rankings appear after background processing
+- **Production Quality**: Sub-100ms queries, proper caching, Reddit ToS compliance
 
 ## Architecture
+
+### Hybrid Data Strategy
+
+**Preloaded Cities** (high-quality):
+- Overture Maps POI data (monthly dumps)
+- Historical Reddit mentions ingested
+- Full iconic + trending rankings available
+- Example: NYC, SF, LA, Chicago, Austin
+
+**On-Demand Bootstrap** (any city):
+- Overpass API fetch (OpenStreetMap data)
+- Basic place listings immediately
+- Reddit ingestion job queued in background
+- Rankings appear after job completes
+
+### Tech Stack
+
+- **Database**: PostgreSQL 16 (Neon) with PostGIS + pg_trgm
+- **Framework**: Next.js 14 (App Router, serverless)
+- **Cache**: Upstash Redis (rate limiting)
+- **Data Sources**: Overture Maps, Overpass API, Reddit API
+- **Deployment**: Vercel (planned)
 
 ### Project Structure
 
 ```
 forklore.ai/
-├── app/
-│   ├── api/v2/           # API v2 endpoints
-│   │   ├── search/       # Main search endpoint
-│   │   ├── fuzzy/        # Autocomplete search
-│   │   ├── cuisines/     # Cuisine facets
-│   │   └── place/[id]/   # Individual place details
-│   ├── layout.tsx
-│   └── page.tsx
-├── lib/
-│   ├── cache.ts          # HTTP caching utilities (ETag, Cache-Control)
-│   ├── ratelimit.ts      # Upstash rate limiting middleware
-│   ├── prisma.ts         # Prisma client singleton
-│   ├── reddit.ts         # Reddit API client
-│   ├── gazetteer.ts      # Overture Maps integration
-│   └── score.ts          # Scoring algorithms
 ├── prisma/
-│   ├── schema.prisma     # Database schema
-│   └── migrations/       # SQL migrations (001-009)
-├── scripts/
-│   ├── 01_download_pushshift.sh
-│   ├── 02_download_overture.sh
-│   ├── 03_etl_pipeline.sh
-│   ├── 04_load_postgres.sql
-│   ├── ingest_reddit_mentions.ts
-│   └── compute_aggregations.sql
-└── docs/
-    ├── SCORING_MATH.md
-    └── REDDIT_TOS_COMPLIANCE.md
+│   └── migrations_v2/           # Production migrations (clean slate)
+│       ├── 000_clean_slate.sql
+│       ├── 001_core_schema.sql
+│       ├── 002_materialized_views.sql
+│       └── 003_scoring_functions.sql
+├── config/
+│   ├── tuning.json              # All tunable constants
+│   └── cities.json              # City manifest (planned)
+├── lib/                          # Production libraries (to be built)
+│   ├── match.ts                 # Multi-stage matching algorithm
+│   ├── bootstrap.ts             # On-demand city bootstrap
+│   ├── jobs.ts                  # Job queue management
+│   └── observability.ts         # Logging + metrics
+├── app/api/v2/                  # Production API (to be built)
+│   ├── search/route.ts
+│   ├── fuzzy/route.ts
+│   ├── place/[id]/route.ts
+│   └── cities/route.ts
+├── scripts/                     # ETL and maintenance scripts (to be built)
+│   ├── bootstrap_city.ts
+│   ├── reddit_ingest.ts
+│   ├── compute_aggregations.sql
+│   └── refresh_mvs.sql
+├── docs/
+│   └── ARCHITECTURE.md          # System design (Phase 5)
+└── _archive/                    # Old prototype code
 ```
 
-### Database Schema
+## Database Schema (Production)
 
-**Core Tables**:
-- `City`: Geographic entities with timezone support
-- `Place`: Restaurants with Overture Maps metadata
-- `RedditMention`: ToS-compliant mention records (permalink + hash)
+### Core Tables
 
-**Materialized Views** (for performance):
-- `mv_top_iconic`: Pre-ranked by Wilson Score
-- `mv_top_trending`: Pre-ranked by exponential decay
+**City**: Global city registry
+- `id`, `name`, `country`, `bbox` (geometry), `lat`, `lon`
+- `ranked` BOOLEAN (true if has Reddit data)
+- `last_refreshed_at` (for staleness tracking)
+
+**Place**: Restaurants from all sources
+- `id`, `city_id`, `name`, `name_norm` (for matching)
+- `geog` (PostGIS geography point)
+- `cuisine[]`, `status`, `source` (overture/osm/bootstrap)
+- `aliases[]` (for matching variations)
+
+**RedditMention**: ToS-compliant metadata only
+- `place_id`, `subreddit`, `post_id`, `comment_id`
+- `permalink` (attribution), `text_hash` (SHA256 for dedup)
+- `score`, `ts` (timestamp)
+- **NO raw text stored** (Reddit ToS compliant)
+
+**PlaceAggregation**: Pre-computed scores
+- `iconic_score`, `trending_score`
+- `unique_threads`, `total_mentions`, `mentions_90d`
+- `top_snippets` JSONB (permalink + metadata only)
+
+**JobQueue**: Async task management
+- `type` (bootstrap_city, ingest_reddit, compute_aggregations)
+- `status` (queued, running, done, error)
+- `payload` JSONB, `attempts`, `error`
+
+### Materialized Views
+
+All with covering indexes for sub-100ms queries:
+
+- `mv_top_iconic_by_city`: Pre-ranked by Wilson Score
+- `mv_top_trending_by_city`: Pre-ranked by exponential decay
 - `mv_top_by_cuisine`: Indexed by cuisine type
 
-**Indexes**:
-- BRIN on `RedditMention.timestamp` (100-1000x smaller than B-tree)
-- GiST on `Place.geog` for geospatial queries
-- GIN trigram on `Place.nameNorm` for fuzzy search
+### Key Indexes
 
-### API Endpoints
-
-#### `GET /api/v2/search`
-
-Main search endpoint with pagination and caching.
-
-**Query Parameters**:
-- `city` (required): City name or alias (nyc, sf, la)
-- `type` (required): `iconic` | `trending` | `cuisine`
-- `cuisine`: Cuisine filter (multiple allowed)
-- `limit`: Results per page (default: 50, max: 100)
-- `offset`: Pagination offset (default: 0)
-- `facets`: Include cuisine counts (boolean)
-
-**Response Headers**:
-- `Cache-Control`: `public, max-age=3600, stale-while-revalidate=86400`
-- `ETag`: Content hash for 304 responses
-- `X-RateLimit-Limit`: 100
-- `X-RateLimit-Remaining`: Remaining requests
-- `X-RateLimit-Reset`: Unix timestamp
-
-**Example**:
-```bash
-curl "https://forklore.ai/api/v2/search?city=nyc&type=iconic&limit=20&offset=0"
-```
-
-#### `GET /api/v2/fuzzy`
-
-Autocomplete search with trigram similarity.
-
-**Query Parameters**:
-- `q` (required): Query string (min 2 chars)
-- `city`: Filter by city
-- `limit`: Results (default: 10)
-
-**Rate Limit**: 300 req/hour
-
-#### `GET /api/v2/cuisines`
-
-Cuisine facets for dynamic filtering.
-
-**Query Parameters**:
-- `city` (required): City name
-- `limit`: Cuisine count (default: 50)
-
-**Cache**: 6 hours
+- **Trigram**: `GIN (name_norm gin_trgm_ops)` for fuzzy matching (threshold: 0.55)
+- **Geospatial**: `GIST (geog)` for location queries
+- **Time-series**: `BRIN (ts)` on RedditMention (100-1000x smaller than B-tree)
+- **Covering**: `(city_id, rank) INCLUDE (all displayed fields)` for index-only scans
 
 ## Scoring Algorithms
 
-### Iconic Score (Wilson Score Lower Bound)
+### Iconic Score (All-Time Popularity)
 
-Prevents flukes and low-sample bias using Bayesian confidence intervals.
+Wilson Score Lower Bound with Bayesian smoothing:
 
-```sql
-wilson_lower_bound(upvotes, mentions × 100) × 1M
-+ unique_threads × 50
-+ total_mentions × 5
-/ LOG(days_since_2020)
+```
+wilson_lower_bound(upvotes, mentions × prior) × scale
++ unique_threads × 8
++ total_mentions × 2
+/ log(days_since_2015)
 ```
 
-**Requirements**:
-- Minimum 3 mentions
-- Confidence interval: 95%
-- Benefits: Stable rankings, no viral outliers
+**Prevents**: Viral flukes, low-sample bias
+**Requires**: Minimum 3 mentions, 95% confidence interval
 
-**Reference**: [docs/SCORING_MATH.md](docs/SCORING_MATH.md)
+### Trending Score (Recent Activity)
 
-### Trending Score (Exponential Decay)
+Exponential time decay with 14-day half-life:
 
-Time-weighted scoring with 14-day half-life.
-
-```sql
+```
 Σ(score × e^(-ln(2) × days_ago / 14)) × 100
 × recency_multiplier
 + unique_threads × 20
@@ -167,31 +152,38 @@ Time-weighted scoring with 14-day half-life.
 - Last 7d: 1.5x
 - Older: 1.0x
 
-**Requirements**:
-- Minimum 2 mentions in 90 days
-- Half-life: 14 days
-- Benefits: Smooth degradation, no cliffs
+**Requires**: Minimum 2 mentions in 90 days
+
+All constants tunable via `config/tuning.json`
+
+## Multi-Stage Matching Algorithm
+
+Handles typos, abbreviations, and geo ambiguity:
+
+1. **Exact alias match** (normalized canonical name + known aliases)
+2. **Trigram similarity** (pg_trgm threshold: 0.55)
+3. **Geo assist** (within 2km → threshold drops to 0.50)
+4. **Brand disambiguation** (chains vs single-location)
+5. **Address hints** (if available in mention text)
 
 ## Reddit ToS Compliance
 
-In accordance with Reddit's Data API Terms and User Agreement:
+Fully compliant with Reddit Data API Terms:
 
-- **No Raw Content Storage**: Only permalinks, hashes, and metadata stored
-- **Attribution**: All mentions link back to original Reddit threads
-- **Transformative Use**: Aggregated sentiment scores and rankings (fair use)
-- **Traffic Generation**: Drives users TO Reddit via permalinks
-- **Deduplication**: MD5 hashes prevent duplicate processing
-
-**Reference**: [docs/REDDIT_TOS_COMPLIANCE.md](docs/REDDIT_TOS_COMPLIANCE.md)
+- **Stored**: Permalinks (attribution), text hashes (dedup), metadata
+- **NOT Stored**: Raw comment/post text, author information
+- **Use Case**: Transformative aggregation (fair use)
+- **Traffic**: Drives users TO Reddit via permalinks
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL 16+ with PostGIS and pg_trgm extensions
-- Reddit API credentials ([apply here](https://www.reddit.com/prefs/apps))
-- Upstash Redis account (free tier available)
+- PostgreSQL 16+ with PostGIS, pg_trgm, uuid-ossp extensions
+- Reddit API credentials
+- Upstash Redis account (free tier)
+- Neon database (free tier for dev)
 
 ### Installation
 
@@ -207,133 +199,57 @@ npm install
 cp .env.example .env.local
 # Edit .env.local with your credentials
 
-# Run database migrations
+# Run production migrations
 source .env.local
-psql "$DATABASE_URL" -f prisma/migrations/00_init_postgis.sql
-psql "$DATABASE_URL" -f prisma/migrations/001_trgm_idx.sql
-# ... run migrations 002-009 in order
+psql "$DATABASE_URL" -f prisma/migrations_v2/000_clean_slate.sql
+psql "$DATABASE_URL" -f prisma/migrations_v2/001_core_schema.sql
+psql "$DATABASE_URL" -f prisma/migrations_v2/002_materialized_views.sql
+psql "$DATABASE_URL" -f prisma/migrations_v2/003_scoring_functions.sql
 
-# Start development server
-npm run dev
+# Verify schema
+psql "$DATABASE_URL" -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
 ```
 
-### Running Migrations
+### Current Status
 
-Migrations must be run in order:
+**Completed** (Phase 1 - Day 1):
+- ✅ Production migrations (clean slate)
+- ✅ Core schema (City, Place, RedditMention, JobQueue, etc.)
+- ✅ Materialized views with covering indexes
+- ✅ Scoring functions (Wilson Score, exponential decay)
+- ✅ Tuning config (`config/tuning.json`)
 
-```bash
-for file in prisma/migrations/*.sql; do
-  echo "Running $file..."
-  psql "$DATABASE_URL" -f "$file"
-done
-```
+**Next Steps** (Phase 1 - Day 2):
+- [ ] Migration 004: Seed NYC data (validate schema)
+- [ ] Create city manifest (`config/cities.json`)
+- [ ] Build multi-stage matching algorithm
+- [ ] Implement Overpass API integration
+- [ ] On-demand city bootstrap
 
-### Data Ingestion
-
-```bash
-# Download Reddit data (Pushshift archives)
-./scripts/01_download_pushshift.sh 2024-12
-
-# Download restaurant data (Overture Maps)
-./scripts/02_download_overture.sh
-
-# Run ETL pipeline
-./scripts/03_etl_pipeline.sh
-
-# Load to Postgres
-psql "$DATABASE_URL" -f scripts/04_load_postgres.sql
-
-# Ingest Reddit mentions
-npx dotenv -e .env.local -- npx tsx scripts/ingest_reddit_mentions.ts
-
-# Compute aggregations
-psql "$DATABASE_URL" -f scripts/compute_aggregations.sql
-```
-
-## Testing
-
-Comprehensive test suite included:
-
-```bash
-# Run automated tests
-./test-week1.sh
-```
-
-**Test Coverage**:
-- Fuzzy search threshold validation
-- Pagination metadata
-- Cache headers (Cache-Control, ETag)
-- Rate limiting (X-RateLimit-* headers)
-- Multiple cuisine filtering
-- Cuisine facet endpoint
-
-**Reference**: [TESTING_GUIDE.md](TESTING_GUIDE.md)
-
-## Performance
-
-**API Latency Targets**:
-- Iconic/Trending search: <100ms (via materialized views)
-- Fuzzy search: <50ms (trigram indexes)
-- Cuisine facets: <20ms (aggregated counts)
-
-**Caching Strategy**:
-- Search results: 1 hour cache, 24 hour stale-while-revalidate
-- Cuisine facets: 6 hour cache
-- Fuzzy search: 5 minute cache
-- ETag support for 304 responses
-
-**Rate Limiting**:
-- Standard endpoints: 100 req/hour per IP
-- Fuzzy search: 300 req/hour per IP
-- Sliding window algorithm via Upstash Redis
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for full 5-day roadmap.
 
 ## Development
 
-### Code Quality Standards
+### Code Standards
 
-- **TypeScript**: Strict mode enabled, no implicit any
-- **Linting**: ESLint with Next.js recommended rules
+- **TypeScript**: Strict mode, no implicit any
+- **Linting**: ESLint with Next.js rules
 - **Error Handling**: Comprehensive try-catch with structured logging
-- **Documentation**: JSDoc comments on exported functions
-- **Testing**: Manual test suite (automated tests planned)
+- **Documentation**: JSDoc on exported functions
+- **Testing**: Unit + integration tests (planned)
 
-### Contribution Guidelines
+### Performance Targets (SLOs)
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/your-feature`)
-3. Run tests (`./test-week1.sh`)
-4. Commit changes (follow conventional commits)
-5. Push to branch
-6. Open Pull Request
+- Search API: p50 ≤ 40ms, p95 ≤ 100ms
+- Fuzzy search: p50 ≤ 30ms, p95 ≤ 60ms
+- End-to-end (cached): p95 ≤ 200ms
+- Bootstrap (first search): ≤ 3s
 
-## Roadmap
+### Cost Targets
 
-### Week 1 (Complete)
-
-- [x] Fuzzy matching threshold optimization (0.42 → 0.55)
-- [x] BRIN index on timestamp column
-- [x] HTTP caching with ETag support
-- [x] Offset-based pagination
-- [x] Wilson Score + exponential decay scoring
-- [x] Reddit ToS compliance refactor
-- [x] Rate limiting with Upstash
-
-### Week 2 (Planned)
-
-- [ ] Borough/city alias normalization
-- [ ] Nearby search with ST_DWithin
-- [ ] Covering indexes for common queries
-- [ ] Partial indexes (status='active')
-- [ ] Monthly ETL automation with alerts
-
-### Future
-
-- [ ] User authentication
-- [ ] Saved places / favorites
-- [ ] Custom lists
-- [ ] Email notifications for trending places
-- [ ] Mobile app (React Native)
-- [ ] Multi-city support expansion
+- Single city (dev): < $25/month
+- 10 cities (prod): < $100/month
+- Components: Neon ($0-20), Upstash ($0), Vercel ($0-20)
 
 ## License
 
@@ -342,11 +258,11 @@ MIT License - see [LICENSE](LICENSE) for details
 ## Acknowledgments
 
 - **Data Sources**: Reddit API, Overture Maps, OpenStreetMap
-- **Infrastructure**: Neon (Postgres), Upstash (Redis), Vercel (hosting)
-- **Inspiration**: Community-driven recommendation systems
+- **Infrastructure**: Neon, Upstash, Vercel
+- **Scoring Reference**: Wilson Score (Evan Miller), Bayesian methods
 
 ## Contact
 
-Project maintained by [@Surfrrosa](https://github.com/Surfrrosa)
+Maintained by [@Surfrrosa](https://github.com/Surfrrosa)
 
-For bugs and feature requests, please [open an issue](https://github.com/Surfrrosa/forklore.ai/issues).
+For issues and feature requests: [GitHub Issues](https://github.com/Surfrrosa/forklore.ai/issues)

@@ -1,0 +1,77 @@
+{
+  "matching": {
+    "trigram_threshold_default": 0.55,
+    "trigram_threshold_with_geo_assist": 0.50,
+    "geo_assist_radius_km": 2.0,
+    "geo_assist_enabled": true,
+    "brand_disambiguation_enabled": true
+  },
+  "scoring": {
+    "iconic": {
+      "min_mentions": 3,
+      "alpha_thread_weight": 8,
+      "beta_mention_weight": 2,
+      "prior_mu": 3,
+      "prior_n": 10,
+      "wilson_confidence": 1.96
+    },
+    "trending": {
+      "min_mentions_90d": 2,
+      "half_life_days": 14,
+      "lookback_days": 90,
+      "thread_weight": 20,
+      "upvote_boost_factor": 0.02,
+      "recency_multipliers": {
+        "last_24h": 2.0,
+        "last_7d": 1.5,
+        "older": 1.0
+      }
+    }
+  },
+  "pagination": {
+    "default_limit": 50,
+    "max_limit": 100
+  },
+  "caching": {
+    "mv_results": {
+      "max_age_seconds": 3600,
+      "stale_while_revalidate_seconds": 86400
+    },
+    "fuzzy_search": {
+      "max_age_seconds": 300,
+      "stale_while_revalidate_seconds": 3600
+    },
+    "facets": {
+      "max_age_seconds": 21600,
+      "stale_while_revalidate_seconds": 86400
+    }
+  },
+  "rate_limiting": {
+    "search": {
+      "requests": 100,
+      "window_seconds": 3600
+    },
+    "fuzzy": {
+      "requests": 300,
+      "window_seconds": 3600
+    },
+    "bootstrap": {
+      "requests": 10,
+      "window_seconds": 3600
+    }
+  },
+  "bootstrap": {
+    "overpass_timeout_seconds": 30,
+    "max_places_per_city": 5000,
+    "default_bbox_size_km": 50
+  },
+  "jobs": {
+    "max_attempts": 5,
+    "retry_backoff_seconds": [60, 300, 900, 3600, 7200]
+  },
+  "observability": {
+    "log_slow_queries_ms": 1000,
+    "alert_mv_stale_hours": 24,
+    "alert_job_failed_attempts": 3
+  }
+}
