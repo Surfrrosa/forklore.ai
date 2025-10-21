@@ -1,0 +1,199 @@
+// Production Prisma Schema
+// Matches migrations_v2 SQL schema exactly
+// Generator and datasource must match production setup
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis(schema: "public"), pg_trgm, uuid_ossp(map: "uuid-ossp")]
+}
+
+// Enums - must match SQL exactly
+enum JobStatus {
+  queued
+  running
+  done
+  error
+
+  @@map("job_status")
+}
+
+enum PlaceSource {
+  overture
+  osm
+  bootstrap
+
+  @@map("place_source")
+}
+
+enum PlaceStatus {
+  open
+  closed
+  unverified
+
+  @@map("place_status")
+}
+
+// City table - global city registry
+model City {
+  id              String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  name            String
+  country         String
+  bbox            Unsupported("geometry(Polygon, 4326)")?
+  lat             Float?    @db.DoublePrecision
+  lon             Float?    @db.DoublePrecision
+  ranked          Boolean   @default(false)
+  lastRefreshedAt DateTime? @map("last_refreshed_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  aliases    CityAlias[]
+  places     Place[]
+  subreddits Subreddit[]
+
+  @@unique([name, country], name: "city_name_country_unique")
+  @@index([name], name: "idx_city_name")
+  @@index([ranked], name: "idx_city_ranked")
+  @@map("City")
+}
+
+// City aliases for normalization
+model CityAlias {
+  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  cityId    String   @map("city_id")
+  alias     String
+  isBorough Boolean  @default(false) @map("is_borough")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId], name: "idx_city_alias_city_id")
+  @@map("CityAlias")
+}
+
+// Places (restaurants/cafes/bars)
+model Place {
+  id       String                                 @id @default(dbgenerated("gen_random_uuid()::text"))
+  cityId   String                                 @map("city_id")
+  overtureId String?                              @map("overture_id")
+  osmId    String?                                @map("osm_id")
+  name     String
+  nameNorm String                                 @map("name_norm")
+  geog     Unsupported("geography(Point, 4326)")
+  address  String?
+  cuisine  String[]                               @default([])
+  status   PlaceStatus                            @default(open)
+  brand    String?
+  source   PlaceSource                            @default(overture)
+  aliases  String[]                               @default([])
+  createdAt DateTime                              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime                              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  city        City              @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  mentions    RedditMention[]
+  aggregation PlaceAggregation?
+
+  @@unique([cityId, nameNorm], name: "place_city_name_unique")
+  @@index([cityId], name: "idx_place_city_id")
+  @@index([cityId, status], name: "idx_place_status_open")
+  @@index([overtureId], name: "idx_place_overture_id")
+  @@index([osmId], name: "idx_place_osm_id")
+  @@map("Place")
+}
+
+// Reddit mentions (ToS compliant - metadata only)
+model RedditMention {
+  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  placeId   String?  @map("place_id")
+  subreddit String
+  postId    String   @map("post_id")
+  commentId String?  @map("comment_id")
+  score     Int
+  ts        DateTime @db.Timestamptz
+  permalink String
+  textHash  Bytes    @map("text_hash")
+  textLen   Int      @map("text_len")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  place Place? @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, commentId, placeId], name: "reddit_mention_unique")
+  @@index([subreddit], name: "idx_reddit_mention_subreddit")
+  @@map("RedditMention")
+}
+
+// Pre-computed place aggregations
+model PlaceAggregation {
+  placeId       String   @id @map("place_id")
+  iconicScore   Decimal  @default(0) @map("iconic_score") @db.Decimal(10, 2)
+  trendingScore Decimal  @default(0) @map("trending_score") @db.Decimal(10, 2)
+  uniqueThreads Int      @default(0) @map("unique_threads")
+  totalMentions Int      @default(0) @map("total_mentions")
+  totalUpvotes  Int      @default(0) @map("total_upvotes")
+  mentions90d   Int      @default(0) @map("mentions_90d")
+  lastSeen      DateTime? @map("last_seen") @db.Timestamptz
+  topSnippets   Json     @default("[]") @map("top_snippets")
+  computedAt    DateTime @default(now()) @map("computed_at") @db.Timestamptz
+
+  // Relations
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId, iconicScore(sort: Desc)], name: "idx_place_agg_iconic")
+  @@index([placeId, trendingScore(sort: Desc)], name: "idx_place_agg_trending")
+  @@map("PlaceAggregation")
+}
+
+// Subreddit to city mapping
+model Subreddit {
+  id         String    @id
+  name       String    @unique
+  cityId     String?   @map("city_id")
+  lastSync   DateTime? @map("last_sync") @db.Timestamptz
+  totalPosts Int       @default(0) @map("total_posts")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  city City? @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId], name: "idx_subreddit_city")
+  @@index([isActive], name: "idx_subreddit_active")
+  @@map("Subreddit")
+}
+
+// Job queue for async tasks
+model JobQueue {
+  id          String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  type        String
+  payload     Json
+  status      JobStatus @default(queued)
+  attempts    Int       @default(0)
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+
+  @@index([status, type], name: "idx_job_status_type")
+  @@index([createdAt], name: "idx_job_created")
+  @@map("JobQueue")
+}
+
+// MV version tracking for ETags
+model MaterializedViewVersion {
+  viewName    String   @id @map("view_name")
+  versionHash String   @map("version_hash")
+  refreshedAt DateTime @default(now()) @map("refreshed_at") @db.Timestamptz
+  rowCount    BigInt?  @map("row_count")
+
+  @@map("MaterializedViewVersion")
+}

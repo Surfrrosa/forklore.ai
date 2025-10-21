@@ -1,4 +1,6 @@
 {
+  "$schema": "./tuning.schema.json",
+  "$$comment": "Forklore.ai Scoring & Matching Configuration",
   "matching": {
     "trigram_threshold_default": 0.55,
     "trigram_threshold_with_geo_assist": 0.50,
@@ -7,7 +9,12 @@
     "brand_disambiguation_enabled": true
   },
   "scoring": {
+    "$$formulas": {
+      "iconic": "Wilson lower bound with Bayesian smoothing:\n  raw_score = (unique_threads * alpha + total_mentions * beta + total_upvotes) / (unique_threads + prior_n)\n  p_hat = raw_score / max(raw_score across city)\n  wilson_lower = (p_hat + z²/2n - z*sqrt(p_hat(1-p_hat)/n + z²/4n²)) / (1 + z²/n)\n  iconic_score = wilson_lower * 100\nWhere z = wilson_confidence (1.96 for 95% CI), n = unique_threads + prior_n",
+      "trending": "Exponential decay with recency boost:\n  For each mention: weight = exp(-ln(2) * age_days / half_life_days) * recency_multiplier\n  raw_score = sum(weight * (1 + score * upvote_boost_factor)) over mentions in lookback window\n  Apply Wilson smoothing as above\n  trending_score = wilson_lower * 100\nDecay: 14-day half-life means 50% weight at 14 days, 25% at 28 days, etc."
+    },
     "iconic": {
+      "$$description": "All-time quality ranking using Wilson lower bound with Bayesian priors",
       "min_mentions": 3,
       "alpha_thread_weight": 8,
       "beta_mention_weight": 2,
@@ -16,6 +23,7 @@
       "wilson_confidence": 1.96
     },
     "trending": {
+      "$$description": "Recency-weighted ranking with exponential decay (14-day half-life)",
       "min_mentions_90d": 2,
       "half_life_days": 14,
       "lookback_days": 90,

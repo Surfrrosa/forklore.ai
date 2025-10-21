@@ -6,7 +6,7 @@
 import citiesConfig from '../config/cities.json';
 
 export interface BoundingBox {
-  type: 'Polygon';
+  readonly type: 'Polygon';
   coordinates: number[][][];
 }
 
@@ -51,7 +51,7 @@ function resolveCityFromConfig(query: string): CityGeoData | null {
         country: city.country,
         lat: city.lat,
         lon: city.lon,
-        bbox: city.bbox,
+        bbox: city.bbox as BoundingBox,
         importance: 1.0  // Max confidence for config cities
       };
     }
@@ -64,7 +64,7 @@ function resolveCityFromConfig(query: string): CityGeoData | null {
         country: city.country,
         lat: city.lat,
         lon: city.lon,
-        bbox: city.bbox,
+        bbox: city.bbox as BoundingBox,
         importance: 1.0
       };
     }
@@ -80,7 +80,7 @@ function resolveCityFromConfig(query: string): CityGeoData | null {
             country: city.country,
             lat: city.lat,
             lon: city.lon,
-            bbox: city.bbox,
+            bbox: city.bbox as BoundingBox,
             importance: 0.95  // Slightly lower than exact city match
           };
         }
@@ -172,7 +172,7 @@ function nominatimBboxToGeoJSON(bbox: string[]): BoundingBox {
   const [south, north, west, east] = bbox.map(parseFloat);
 
   return {
-    type: 'Polygon',
+    type: 'Polygon' as const,
     coordinates: [[
       [west, south],
       [east, south],
@@ -197,7 +197,7 @@ export function bboxFromPoint(lat: number, lon: number, radiusKm: number = 25): 
   const east = lon + lonDelta;
 
   return {
-    type: 'Polygon',
+    type: 'Polygon' as const,
     coordinates: [[
       [west, south],
       [east, south],

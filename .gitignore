@@ -163,7 +163,11 @@ coverage/
 .idea/
 
 # Project-specific
-data/
+data/*
+!data/exports/
+data/exports/*
+!data/exports/*.json
+!data/exports/*.sql
 AUDIT/
 AUDIT_PACK_*
 *.zip

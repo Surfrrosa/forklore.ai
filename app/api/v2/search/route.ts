@@ -27,11 +27,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import tuning from '@/config/tuning.json';
+import { generousRateLimit } from '@/lib/rate-limit';
+import { createApiResponse, createApiErrorResponse } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
-  const startTime = Date.now();
+  // Apply rate limiting (100 req/min)
+  return await generousRateLimit(request, async () => {
+    const startTime = Date.now();
 
-  try {
+    try {
     // Parse query params
     const { searchParams } = new URL(request.url);
     const cityQuery = searchParams.get('city');
@@ -45,27 +49,18 @@ export async function GET(request: NextRequest) {
 
     // Validate required params
     if (!cityQuery) {
-      return NextResponse.json(
-        { error: 'Missing required parameter: city' },
-        { status: 400 }
-      );
+      return createApiErrorResponse('Missing required parameter: city', 400, 'MISSING_PARAM');
     }
 
     if (!type || !['iconic', 'trending', 'cuisine'].includes(type)) {
-      return NextResponse.json(
-        { error: 'Invalid type. Must be: iconic, trending, or cuisine' },
-        { status: 400 }
-      );
+      return createApiErrorResponse('Invalid type. Must be: iconic, trending, or cuisine', 400, 'INVALID_TYPE');
     }
 
     // Resolve city (check aliases)
     const city = await resolveCity(cityQuery);
 
     if (!city) {
-      return NextResponse.json(
-        { error: `City not found: ${cityQuery}` },
-        { status: 404 }
-      );
+      return createApiErrorResponse(`City not found: ${cityQuery}`, 404, 'CITY_NOT_FOUND');
     }
 
     // Check if city is ranked (has Reddit data)
@@ -73,7 +68,7 @@ export async function GET(request: NextRequest) {
       // Return unranked results (OSM bootstrap data)
       const unrankedResults = await getUnrankedResults(city.id, limit, offset, cuisine);
 
-      return NextResponse.json({
+      return createApiResponse({
         ranked: false,
         rank_source: 'unranked_osm',
         last_refreshed_at: null,
@@ -85,11 +80,8 @@ export async function GET(request: NextRequest) {
           total: unrankedResults.total,
           has_more: offset + limit < unrankedResults.total
         }
-      }, {
-        headers: {
-          'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
-          'X-Response-Time': `${Date.now() - startTime}ms`
-        }
+      }, startTime, {
+        'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600'
       });
     }
 
@@ -115,7 +107,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    return createApiResponse({
       ranked: true,
       rank_source: `mv_${type}`,
       last_refreshed_at: mvVersion.refreshed_at.toISOString(),
@@ -127,21 +119,16 @@ export async function GET(request: NextRequest) {
         total: results.total,
         has_more: offset + limit < results.total
       }
-    }, {
-      headers: {
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-        'ETag': etag,
-        'X-Response-Time': `${Date.now() - startTime}ms`
-      }
+    }, startTime, {
+      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+      'ETag': etag
     });
 
-  } catch (error) {
-    console.error('[search] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+      console.error('[search] Error:', error);
+      return createApiErrorResponse('Internal server error', 500, 'INTERNAL_ERROR');
+    }
+  });
 }
 
 /**
@@ -179,6 +166,35 @@ async function resolveCity(query: string): Promise<{ id: string; name: string; r
 }
 
 /**
+ * Result types
+ */
+interface UnrankedResult {
+  place_id: string;
+  name: string;
+  cuisine: string[];
+  address: string | null;
+  lat: number;
+  lon: number;
+  brand: string | null;
+  source: string;
+}
+
+interface RankedResult {
+  place_id: string;
+  city_id: string;
+  name: string;
+  cuisine: string[];
+  address: string | null;
+  lat: number;
+  lon: number;
+  rank: bigint;
+  iconic_score?: number;
+  trending_score?: number;
+  unique_threads: bigint;
+  total_mentions: bigint;
+}
+
+/**
  * Get unranked results (for cities without Reddit data)
  */
 async function getUnrankedResults(
@@ -186,37 +202,60 @@ async function getUnrankedResults(
   limit: number,
   offset: number,
   cuisine?: string | null
-): Promise<{ results: any[]; total: number }> {
-  const cuisineFilter = cuisine
-    ? `AND ${cuisine} = ANY(cuisine)`
-    : '';
+): Promise<{ results: UnrankedResult[]; total: number }> {
 
-  const results = await prisma.$queryRaw<any[]>`
-    SELECT
-      id as place_id,
-      name,
-      cuisine,
-      address,
-      ST_Y(geog::geometry) as lat,
-      ST_X(geog::geometry) as lon,
-      brand,
-      source
-    FROM "Place"
-    WHERE city_id = ${cityId}
-      AND status = 'open'
-      ${cuisineFilter}
-    ORDER BY name
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `;
+  // Build separate queries for cuisine filter vs no filter
+  const results = cuisine
+    ? await prisma.$queryRaw<UnrankedResult[]>`
+        SELECT
+          id as place_id,
+          name,
+          cuisine,
+          address,
+          ST_Y(geog::geometry) as lat,
+          ST_X(geog::geometry) as lon,
+          brand,
+          source
+        FROM "Place"
+        WHERE city_id = ${cityId}
+          AND status = 'open'
+          AND ${cuisine} = ANY(cuisine)
+        ORDER BY name
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `
+    : await prisma.$queryRaw<UnrankedResult[]>`
+        SELECT
+          id as place_id,
+          name,
+          cuisine,
+          address,
+          ST_Y(geog::geometry) as lat,
+          ST_X(geog::geometry) as lon,
+          brand,
+          source
+        FROM "Place"
+        WHERE city_id = ${cityId}
+          AND status = 'open'
+        ORDER BY name
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `;
 
-  const totalResult = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(*) as count
-    FROM "Place"
-    WHERE city_id = ${cityId}
-      AND status = 'open'
-      ${cuisineFilter}
-  `;
+  const totalResult = cuisine
+    ? await prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*) as count
+        FROM "Place"
+        WHERE city_id = ${cityId}
+          AND status = 'open'
+          AND ${cuisine} = ANY(cuisine)
+      `
+    : await prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*) as count
+        FROM "Place"
+        WHERE city_id = ${cityId}
+          AND status = 'open'
+      `;
 
   return {
     results,
@@ -233,30 +272,45 @@ async function getRankedResults(
   limit: number,
   offset: number,
   cuisine?: string | null
-): Promise<{ results: any[]; total: number }> {
-  const cuisineFilter = cuisine
-    ? `AND ${cuisine} = ANY(cuisine)`
-    : '';
+): Promise<{ results: RankedResult[]; total: number }> {
+  // Validate mvName (whitelist only - table identifiers can't be parameterized)
+  const allowedViews = ['mv_top_iconic_by_city', 'mv_top_trending_by_city'];
+  if (!allowedViews.includes(mvName)) {
+    throw new Error(`Invalid MV name: ${mvName}`);
+  }
 
-  const results = await prisma.$queryRaw<any[]>`
-    SELECT *
-    FROM ${mvName}
-    WHERE city_id = ${cityId}
-      ${cuisineFilter}
-    ORDER BY rank
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `;
+  // Since mvName is validated via whitelist, we can safely interpolate it
+  // Cuisine parameter is still safely parameterized
+  const results = cuisine
+    ? await prisma.$queryRawUnsafe<RankedResult[]>(
+        `SELECT * FROM "${mvName}" WHERE city_id = $1 AND $2 = ANY(cuisine) ORDER BY rank LIMIT $3 OFFSET $4`,
+        cityId, cuisine, limit, offset
+      )
+    : await prisma.$queryRawUnsafe<RankedResult[]>(
+        `SELECT * FROM "${mvName}" WHERE city_id = $1 ORDER BY rank LIMIT $2 OFFSET $3`,
+        cityId, limit, offset
+      );
 
-  const totalResult = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(*) as count
-    FROM ${mvName}
-    WHERE city_id = ${cityId}
-      ${cuisineFilter}
-  `;
+  const totalResult = cuisine
+    ? await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*) as count FROM "${mvName}" WHERE city_id = $1 AND $2 = ANY(cuisine)`,
+        cityId, cuisine
+      )
+    : await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*) as count FROM "${mvName}" WHERE city_id = $1`,
+        cityId
+      );
+
+  // Convert BigInts to Numbers for JSON serialization
+  const serializedResults = results.map(r => ({
+    ...r,
+    rank: Number(r.rank),
+    unique_threads: Number(r.unique_threads),
+    total_mentions: Number(r.total_mentions)
+  }));
 
   return {
-    results,
+    results: serializedResults,
     total: Number(totalResult[0].count)
   };
 }

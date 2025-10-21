@@ -10,6 +10,7 @@
  */
 
 import crypto from 'crypto';
+import { env } from './env';
 
 export interface RedditPost {
   id: string;
@@ -87,6 +88,10 @@ export class RedditClient {
     const data = await response.json();
     this.accessToken = data.access_token;
     this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1min buffer
+
+    if (!this.accessToken) {
+      throw new Error('Reddit OAuth failed: no access token received');
+    }
 
     return this.accessToken;
   }
@@ -248,4 +253,15 @@ export async function mentionExists(
   `;
 
   return Number(result[0].count) > 0;
+}
+
+/**
+ * Create a Reddit client with validated environment variables
+ */
+export function createRedditClient(): RedditClient {
+  return new RedditClient(
+    env.REDDIT_CLIENT_ID,
+    env.REDDIT_CLIENT_SECRET,
+    env.REDDIT_USER_AGENT
+  );
 }

@@ -287,6 +287,93 @@ export async function matchPlaces(
 }
 
 /**
+ * Blocklist of common false positive matches
+ * These are common words/phrases that match place names but aren't restaurants
+ */
+const EXTRACTION_BLOCKLIST = new Set([
+  // Articles, conjunctions, prepositions
+  'The', 'And', 'For', 'But', 'Or', 'Not', 'So', 'Yet', 'If', 'When', 'Where', 'Why', 'How',
+  'In', 'On', 'At', 'By', 'With', 'From', 'To', 'Of', 'As', 'Than', 'Then',
+
+  // Common nouns that match place names
+  'Good', 'Bad', 'Great', 'Best', 'Worst', 'Better', 'New', 'Old', 'More', 'Most', 'Less',
+  'Well', 'Just', 'Only', 'Now', 'Here', 'There', 'All', 'Some', 'Any', 'Every', 'Each',
+  'Both', 'Few', 'Many', 'Much', 'Little', 'Big', 'Small', 'Large', 'Long', 'Short',
+
+  // Days and temporal words
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+  'Today', 'Tomorrow', 'Yesterday', 'Week', 'Month', 'Year', 'Day', 'Night', 'Morning',
+
+  // Pronouns and names that aren't places
+  'He', 'She', 'They', 'You', 'We', 'I', 'Me', 'Him', 'Her', 'Them', 'Us',
+  'This', 'That', 'These', 'Those', 'What', 'Which', 'Who', 'Whom', 'Whose',
+
+  // Generic location/direction words
+  'North', 'South', 'East', 'West', 'Up', 'Down', 'Left', 'Right', 'Near', 'Far',
+  'Inside', 'Outside', 'Above', 'Below', 'Over', 'Under',
+
+  // Reddit/internet specific
+  'Reddit', 'Edit', 'Update', 'Thanks', 'Please', 'Sorry', 'Wow', 'Lol', 'Omg',
+
+  // Generic business words
+  'Store', 'Shop', 'Place', 'Spot', 'Location', 'Building', 'House', 'Home',
+
+  // Common verbs that get capitalized
+  'Can', 'Could', 'Should', 'Would', 'Will', 'Might', 'May', 'Must',
+  'Do', 'Does', 'Did', 'Have', 'Has', 'Had', 'Get', 'Got', 'Make', 'Made',
+  'See', 'Saw', 'Go', 'Went', 'Come', 'Came', 'Take', 'Took', 'Give', 'Gave',
+
+  // Interrogatives
+  'Are', 'Is', 'Was', 'Were', 'Been', 'Being', 'Am',
+
+  // Generic descriptors
+  'Things', 'Something', 'Anything', 'Everything', 'Nothing', 'Someone',
+  'Anyone', 'Everyone', 'Nobody', 'Somewhere', 'Anywhere', 'Everywhere', 'Nowhere',
+
+  // Misc common false positives
+  'People', 'Person', 'Man', 'Woman', 'Girl', 'Boy', 'Kid', 'Baby',
+  'School', 'Work', 'Job', 'Office', 'Hospital', 'Church', 'Park',
+  'City', 'Town', 'State', 'Country', 'Street', 'Road', 'Avenue',
+  'Yes', 'No', 'Maybe', 'Probably', 'Definitely', 'Absolutely',
+  'Never', 'Always', 'Sometimes', 'Often', 'Rarely', 'Barely',
+  'Really', 'Very', 'Quite', 'Rather', 'Pretty', 'Too', 'Enough',
+  'Still', 'Already', 'Almost', 'Also', 'Even', 'Though', 'However',
+  'Meanwhile', 'Otherwise', 'Therefore', 'Thus', 'Hence', 'Indeed',
+  'Actually', 'Basically', 'Literally', 'Honestly', 'Truly', 'Certainly',
+
+  // Medical/professional
+  'Doctor', 'Doctors', 'Nurse', 'Nurses', 'Patient', 'Patients',
+
+  // Misc
+  'Post', 'Comment', 'Thread', 'Link', 'Image', 'Video', 'Article', 'News',
+  'Sherwood', 'Beaverton', 'Gresham', 'Hillsboro', 'Eugene', // Cities near Portland
+  'Portland', 'Oregon', 'Seattle', 'Washington', 'California', 'Canada', // Geographic
+  'American', 'Asian', 'European', 'Mexican', 'Vietnamese', // Nationalities
+  'Emergency', 'Departments', 'Hospitals', 'Medicare', 'Trauma',
+  'Violent', 'Gross', 'Disgusting', 'Weird', 'Strange', 'Odd',
+  'Hope', 'Wish', 'Want', 'Need', 'Like', 'Love', 'Hate',
+  'Keep', 'Stop', 'Start', 'Begin', 'End', 'Finish',
+  'Try', 'Tried', 'Attempt', 'Attempted', 'Fail', 'Failed',
+  'Pass', 'Passed', 'Miss', 'Missed', 'Find', 'Found', 'Lose', 'Lost',
+  'Call', 'Called', 'Ask', 'Asked', 'Tell', 'Told', 'Say', 'Said',
+  'Look', 'Looked', 'Watch', 'Watched', 'Read', 'Write', 'Written',
+  'Buy', 'Bought', 'Sell', 'Sold', 'Pay', 'Paid', 'Cost',
+  'Reach', 'Reached', 'Leave', 'Left', 'Stay', 'Stayed', 'Remain',
+  'Check', 'Checked', 'Use', 'Used', 'Help', 'Helped', 'Fix', 'Fixed',
+  'Sounds', 'Looks', 'Seems', 'Appears', 'Feels', 'Happens',
+
+  // Names that matched but shouldn't
+  'Trinity Center', 'Jane Doe', 'Ronald', 'Nikki', 'Bob',
+  'House Supervisor', 'Emergency Medicine', 'Social Media', 'Internet',
+  'Signal', 'Posting', 'Signal Boosting', 'Fedora',
+
+  // Phrases
+  'Might Be', 'Could Be', 'Should Be', 'Would Be', 'May Be',
+  'Turn Turn Turn', 'Which Wich', 'Sit Stay', 'Take Two',
+  'Progress Ridge', 'Broadway Hall'
+]);
+
+/**
  * Extract potential restaurant names from Reddit text
  * (Simple heuristic - can be enhanced with NER)
  */
@@ -304,8 +391,18 @@ export function extractPlaceNames(text: string): string[] {
     const matches = text.matchAll(pattern);
     for (const match of matches) {
       const name = match[1].trim();
-      // Filter out common false positives
-      if (name.length >= 3 && !['The', 'And', 'For', 'But'].includes(name)) {
+
+      // Filter out:
+      // 1. Too short (< 3 chars)
+      // 2. Blocklisted common words
+      // 3. All caps (likely acronyms)
+      // 4. Contains only numbers
+      if (
+        name.length >= 3 &&
+        !EXTRACTION_BLOCKLIST.has(name) &&
+        name !== name.toUpperCase() &&
+        !/^\d+$/.test(name)
+      ) {
         names.add(name);
       }
     }

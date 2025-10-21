@@ -19,7 +19,7 @@
  * - Rate limited (1 req/sec)
  */
 
-import { RedditClient, createMentionMetadata } from '../lib/reddit';
+import { createRedditClient, createMentionMetadata } from '../lib/reddit';
 import { matchPlace, extractPlaceNames } from '../lib/match';
 import prisma from '../lib/prisma';
 
@@ -79,12 +79,8 @@ export async function ingestRedditForCity(cityId: string): Promise<IngestResult>
 
   console.log(`Mapped subreddits: ${subreddits.map(s => s.name).join(', ')}\n`);
 
-  // Initialize Reddit client
-  const reddit = new RedditClient(
-    process.env.REDDIT_CLIENT_ID!,
-    process.env.REDDIT_CLIENT_SECRET!,
-    'Forklore.ai/1.0 (https://forklore.ai; contact@forklore.ai)'
-  );
+  // Initialize Reddit client with validated environment
+  const reddit = createRedditClient();
 
   let postsProcessed = 0;
   let commentsProcessed = 0;

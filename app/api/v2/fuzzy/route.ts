@@ -26,11 +26,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { normalizeName } from '@/lib/match';
 import prisma from '@/lib/prisma';
 import tuning from '@/config/tuning.json';
+import { standardRateLimit } from '@/lib/rate-limit';
+import { createApiResponse, createApiErrorResponse } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
-  const startTime = Date.now();
+  // Apply rate limiting (30 req/min)
+  return await standardRateLimit(request, async () => {
+    const startTime = Date.now();
 
-  try {
+    try {
     // Parse query params
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
@@ -42,10 +46,7 @@ export async function GET(request: NextRequest) {
 
     // Validate required params
     if (!query || query.length < 2) {
-      return NextResponse.json(
-        { error: 'Query must be at least 2 characters' },
-        { status: 400 }
-      );
+      return createApiErrorResponse('Query must be at least 2 characters', 400, 'INVALID_QUERY');
     }
 
     const normalized = normalizeName(query);
@@ -61,46 +62,72 @@ export async function GET(request: NextRequest) {
     }
 
     // Fuzzy search with trigram similarity
-    const cityFilter = cityId ? `AND city_id = '${cityId}'` : '';
+    interface FuzzyResult {
+      place_id: string;
+      name: string;
+      city: string;
+      cuisine: string[];
+      address: string | null;
+      lat: number;
+      lon: number;
+      similarity: number;
+      score: number;
+    }
 
-    const results = await prisma.$queryRaw<any[]>`
-      SELECT
-        p.id as place_id,
-        p.name,
-        c.name as city,
-        p.cuisine,
-        p.address,
-        ST_Y(p.geog::geometry) as lat,
-        ST_X(p.geog::geometry) as lon,
-        similarity(p.name_norm, ${normalized}) as similarity,
-        COALESCE(pa.iconic_score, 0) as score
-      FROM "Place" p
-      JOIN "City" c ON c.id = p.city_id
-      LEFT JOIN "PlaceAggregation" pa ON pa.place_id = p.id
-      WHERE p.status = 'open'
-        AND similarity(p.name_norm, ${normalized}) >= ${threshold}
-        ${cityFilter}
-      ORDER BY similarity DESC, score DESC
-      LIMIT ${limit}
-    `;
+    // Build query with type-safe parameters
+    const results = cityId
+      ? await prisma.$queryRaw<FuzzyResult[]>`
+          SELECT
+            p.id as place_id,
+            p.name,
+            c.name as city,
+            p.cuisine,
+            p.address,
+            ST_Y(p.geog::geometry) as lat,
+            ST_X(p.geog::geometry) as lon,
+            similarity(p.name_norm, ${normalized}) as similarity,
+            COALESCE(pa.iconic_score, 0) as score
+          FROM "Place" p
+          JOIN "City" c ON c.id = p.city_id
+          LEFT JOIN "PlaceAggregation" pa ON pa.place_id = p.id
+          WHERE p.status = 'open'
+            AND p.city_id = ${cityId}
+            AND similarity(p.name_norm, ${normalized}) >= ${threshold}
+          ORDER BY similarity DESC, score DESC
+          LIMIT ${limit}
+        `
+      : await prisma.$queryRaw<FuzzyResult[]>`
+          SELECT
+            p.id as place_id,
+            p.name,
+            c.name as city,
+            p.cuisine,
+            p.address,
+            ST_Y(p.geog::geometry) as lat,
+            ST_X(p.geog::geometry) as lon,
+            similarity(p.name_norm, ${normalized}) as similarity,
+            COALESCE(pa.iconic_score, 0) as score
+          FROM "Place" p
+          JOIN "City" c ON c.id = p.city_id
+          LEFT JOIN "PlaceAggregation" pa ON pa.place_id = p.id
+          WHERE p.status = 'open'
+            AND similarity(p.name_norm, ${normalized}) >= ${threshold}
+          ORDER BY similarity DESC, score DESC
+          LIMIT ${limit}
+        `;
 
-    return NextResponse.json({
+    return createApiResponse({
       query,
       results
-    }, {
-      headers: {
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
-        'X-Response-Time': `${Date.now() - startTime}ms`
-      }
+    }, startTime, {
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600'
     });
 
-  } catch (error) {
-    console.error('[fuzzy] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+      console.error('[fuzzy] Error:', error);
+      return createApiErrorResponse('Internal server error', 500, 'INTERNAL_ERROR');
+    }
+  });
 }
 
 /**

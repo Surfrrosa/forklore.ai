@@ -75,27 +75,41 @@ export async function enqueueJob(
  * Claim next available job (atomic)
  */
 export async function claimNextJob(types?: JobType[]): Promise<Job | null> {
-  const typeFilter = types
-    ? `AND type = ANY(ARRAY[${types.map(t => `'${t}'`).join(', ')}]::text[])`
-    : '';
-
-  const jobs = await prisma.$queryRaw<Job[]>`
-    UPDATE "JobQueue"
-    SET
-      status = 'running',
-      started_at = NOW(),
-      updated_at = NOW()
-    WHERE id = (
-      SELECT id
-      FROM "JobQueue"
-      WHERE status = 'queued'
-        ${typeFilter}
-      ORDER BY created_at ASC
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING *
-  `;
+  // Type-safe filtering - use separate queries for with/without type filter
+  const jobs = types && types.length > 0
+    ? await prisma.$queryRaw<Job[]>`
+        UPDATE "JobQueue"
+        SET
+          status = 'running',
+          started_at = NOW(),
+          updated_at = NOW()
+        WHERE id = (
+          SELECT id
+          FROM "JobQueue"
+          WHERE status = 'queued'
+            AND type = ANY(${types}::text[])
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *
+      `
+    : await prisma.$queryRaw<Job[]>`
+        UPDATE "JobQueue"
+        SET
+          status = 'running',
+          started_at = NOW(),
+          updated_at = NOW()
+        WHERE id = (
+          SELECT id
+          FROM "JobQueue"
+          WHERE status = 'queued'
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *
+      `;
 
   if (jobs.length === 0) {
     return null;
@@ -204,20 +218,39 @@ export async function getJobs(
   type?: JobType,
   limit: number = 100
 ): Promise<Job[]> {
-  const statusFilter = status ? `AND status = '${status}'` : '';
-  const typeFilter = type ? `AND type = '${type}'` : '';
+  // Build type-safe query based on filters
+  if (status && type) {
+    return await prisma.$queryRaw<Job[]>`
+      SELECT * FROM "JobQueue"
+      WHERE status = ${status} AND type = ${type}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+  }
 
-  const jobs = await prisma.$queryRaw<Job[]>`
-    SELECT *
-    FROM "JobQueue"
-    WHERE 1=1
-      ${statusFilter}
-      ${typeFilter}
+  if (status) {
+    return await prisma.$queryRaw<Job[]>`
+      SELECT * FROM "JobQueue"
+      WHERE status = ${status}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+  }
+
+  if (type) {
+    return await prisma.$queryRaw<Job[]>`
+      SELECT * FROM "JobQueue"
+      WHERE type = ${type}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+  }
+
+  return await prisma.$queryRaw<Job[]>`
+    SELECT * FROM "JobQueue"
     ORDER BY created_at DESC
     LIMIT ${limit}
   `;
-
-  return jobs;
 }
 
 /**
